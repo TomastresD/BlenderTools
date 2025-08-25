@@ -1,0 +1,40 @@
+import bpy
+import os
+
+# Definimos el tamaño deseado para la imagen
+new_size = (4096, 4096)
+
+# Definimos la ruta de la carpeta donde se guardará la imagen
+# Asegúrate de que esta carpeta exista, de lo contrario, el script dará error.
+output_folder = "E:\\"
+
+# 1. Encontrar el plano y su material (ajusta estos nombres si son diferentes)
+obj = bpy.context.active_object
+
+if obj and obj.type == 'MESH' and obj.data.materials:
+    material = obj.data.materials[0]
+    
+    if material.use_nodes:
+        image_node = material.node_tree.nodes.get("Image Texture")
+        
+        if image_node and image_node.image:
+            image = image_node.image
+            
+            # 2. Reescalar la imagen en memoria
+            image.scale(new_size[0], new_size[1])
+            
+            # 3. Construir la ruta completa del archivo de salida
+            # El nombre del archivo será 'scaled_' + el nombre original de la imagen
+            scaled_filename = 'scaled_' + image.name
+            scaled_filepath = os.path.join(output_folder, scaled_filename)
+
+            # 4. Guardar la imagen reescalada
+            try:
+                # El método save_render() guarda la imagen con el nuevo tamaño
+                image.save_render(filepath=scaled_filepath)
+                print(f"Imagen '{image.name}' reescalada a {new_size[0]}x{new_size[1]} y guardada en '{scaled_filepath}'")
+            except Exception as e:
+                print(f"Error al guardar la imagen. Asegúrate de que la ruta '{output_folder}' exista y tengas permisos de escritura.")
+                print(f"Error: {e}")
+        else:
+            print("No se encontró el nodo de textura de imagen o no tiene una imagen asignada.")
