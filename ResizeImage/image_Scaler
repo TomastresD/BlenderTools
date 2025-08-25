@@ -1,0 +1,145 @@
+import bpy
+import os
+
+bl_info = {
+    "name": "Image Scaler UI",
+    "author": "Tomas Rodriguez",
+    "version": (1, 2),
+    "blender": (4, 1, 0),
+    "location": "3D Viewport > Sidebar",
+    "description": "Escala la textura del objeto activo con opciones de resolución, formato y ruta.",
+    "warning": "",
+    "wiki_url": "",
+    "category": "Object",
+}
+
+# Define las opciones de formato y resolución para la UI
+image_formats = [
+    ('PNG', 'PNG', 'Portable Network Graphics'),
+    ('JPEG', 'JPEG', 'Joint Photographic Experts Group'),
+    ('TIFF', 'TIFF', 'Tagged Image File Format'),
+    ('BMP', 'BMP', 'Bitmap'),
+    ('OPEN_EXR', 'OpenEXR', 'High Dynamic Range Image'),
+]
+
+image_resolutions = [
+    ('512', '512x512', 'Resolución 512x512'),
+    ('1024', '1024x1024', 'Resolución 1024x1024'),
+    ('2048', '2048x2048', 'Resolución 2048x2048'),
+    ('4096', '4096x4096', 'Resolución 4096x4096'),
+    ('8192', '8192x8192', 'Resolución 8192x8192'),
+]
+
+# Creamos las propiedades de la escena para guardar las configuraciones de la UI
+class ImageScalerProperties(bpy.types.PropertyGroup):
+    output_path: bpy.props.StringProperty(
+        name="Ruta de Salida",
+        subtype='DIR_PATH',
+        default="E:\\"
+    )
+    output_format: bpy.props.EnumProperty(
+        name="Formato",
+        items=image_formats,
+        default='PNG'
+    )
+    resolution: bpy.props.EnumProperty(
+        name="Resolución",
+        items=image_resolutions,
+        default='4096'
+    )
+
+# La clase del panel de la UI
+class VIEW3D_PT_image_scaler_panel(bpy.types.Panel):
+    bl_label = "Escalador de Imágenes"
+    bl_idname = "VIEW3D_PT_image_scaler_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Herramientas"
+    
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene
+        props = scene.image_scaler_props
+        
+        # Muestra las propiedades en la UI
+        layout.prop(props, "output_path")
+        layout.prop(props, "output_format")
+        layout.prop(props, "resolution")
+        
+        # Botón para ejecutar el operador
+        layout.operator("object.scale_and_save_image", text="Escalar y Guardar Imagen")
+
+# El operador que realiza la acción principal
+class OBJECT_OT_scale_and_save_image(bpy.types.Operator):
+    bl_idname = "object.scale_and_save_image"
+    bl_label = "Escalar y Guardar Imagen"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        props = context.scene.image_scaler_props
+        
+        # Obtenemos la resolución de la UI y la convertimos a entero
+        resolution_val = int(props.resolution)
+        new_size = (resolution_val, resolution_val)
+        
+        output_path = props.output_path
+        output_format = props.output_format
+        
+        obj = context.active_object
+        
+        if not obj or obj.type != 'MESH' or not obj.data.materials:
+            self.report({'WARNING'}, "El objeto activo no es un MESH o no tiene un material.")
+            return {'CANCELLED'}
+
+        material = obj.data.materials[0]
+        
+        if not material.use_nodes:
+            self.report({'WARNING'}, "El material no usa nodos.")
+            return {'CANCELLED'}
+
+        image_node = material.node_tree.nodes.get("Image Texture")
+        
+        if not image_node or not image_node.image:
+            self.report({'WARNING'}, "No se encontró el nodo de textura de imagen o no tiene una imagen asignada.")
+            return {'CANCELLED'}
+
+        image = image_node.image
+        
+        try:
+            image.scale(new_size[0], new_size[1])
+            
+            original_filename = os.path.splitext(image.name)[0]
+            
+            ext_map = {item[0]: item[1].lower() for item in image_formats}
+            output_ext = '.' + ext_map.get(output_format, 'png')
+
+            scaled_filename = f'scaled_{original_filename}_{resolution_val}x{resolution_val}{output_ext}'
+            scaled_filepath = os.path.join(output_path, scaled_filename)
+
+            if not os.path.isabs(scaled_filepath):
+                scaled_filepath = bpy.path.abspath(scaled_filepath)
+            
+            context.scene.render.image_settings.file_format = output_format
+            
+            image.save_render(filepath=scaled_filepath)
+            self.report({'INFO'}, f"Imagen reescalada a {resolution_val}x{resolution_val} y guardada en '{scaled_filepath}'")
+            return {'FINISHED'}
+        except Exception as e:
+            self.report({'ERROR'}, f"Error al guardar la imagen: {e}")
+            return {'CANCELLED'}
+
+# Registro de las clases
+def register():
+    bpy.utils.register_class(ImageScalerProperties)
+    bpy.utils.register_class(OBJECT_OT_scale_and_save_image)
+    bpy.utils.register_class(VIEW3D_PT_image_scaler_panel)
+    bpy.types.Scene.image_scaler_props = bpy.props.PointerProperty(type=ImageScalerProperties)
+
+def unregister():
+    bpy.utils.unregister_class(ImageScalerProperties)
+    bpy.utils.unregister_class(OBJECT_OT_scale_and_save_image)
+    bpy.utils.unregister_class(VIEW3D_PT_image_scaler_panel)
+    del bpy.types.Scene.image_scaler_props
+
+if __name__ == "__main__":
+    register()
